@@ -29,4 +29,35 @@ func GetSubdomains(domain string)([]string, error){
 		return nil ,fmt.Errorf("read  error :%w" , err)
 	}
 
+	var entries []CertificateEntry
+
+	if err := json.Unmarshal(body, &entries); err != nil {
+		return  nil, fmt.Errorf("unmarsha error : %w" ,err)
+	}
+
+	// remove duplicates 
+	uniqueSubs := make(map[string] struct{})
+ 
+	for _,entry := range entries{
+		for _,line := range strings.Split(entry.NameValue, "\n"){
+			 line = strings.TrimSpace(line)
+
+            // Only add valid, non-empty lines to the map
+            if line != "" {
+                uniqueSubs[line] = struct{}{}
+            }
+
+		}
+	
+
+	}
+
+	var result []string
+	for sub := range uniqueSubs{
+		result = append(result,sub)
+
+	}
+
+	return result , nil
+
 }
