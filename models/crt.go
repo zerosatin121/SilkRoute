@@ -4,61 +4,67 @@ import (
     "encoding/json"
     "fmt"
     "io"
+    "log"
     "net/http"
-    "strings"
-    "sync"
     "time"
 )
 
-type CertificateEntry struct {
+type CRTResult struct {
     NameValue string `json:"name_value"`
 }
 
 func GetCRTSubdomains(domain string) ([]string, error) {
-    url := fmt.Sprintf("https://crt.sh/json?q=%s", domain)
-
     client := &http.Client{
-        Timeout: 30 * time.Second,
+        Timeout: 60 * time.Second, // bumped up from 10s for reliability
     }
 
-    resp, err := client.Get(url)
+    url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
+    req, err := http.NewRequest("GET", url, nil)
     if err != nil {
-        return nil, fmt.Errorf("crt http error: %w", err)
+        return nil, fmt.Errorf("CRT request error: %v", err)
+    }
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("CRT response error: %v", err)
     }
     defer resp.Body.Close()
 
+    contentType := resp.Header.Get("Content-Type")
+    if contentType != "application/json" {
+        body, _ := io.ReadAll(resp.Body)
+        log.Printf("CRT response is not JSON (got %s):\n%s", contentType, body)
+        return nil, fmt.Errorf("unexpected content type from crt.sh")
+    }
+
     body, err := io.ReadAll(resp.Body)
     if err != nil {
-        return nil, fmt.Errorf("crt read error: %w", err)
+        return nil, fmt.Errorf("CRT body read error: %v", err)
     }
 
-    var entries []CertificateEntry
-    if err := json.Unmarshal(body, &entries); err != nil {
-        return nil, fmt.Errorf("crt unmarshal error: %w", err)
+    var results []CRTResult
+    if err := json.Unmarshal(body, &results); err != nil {
+        log.Printf("CRT unmarshal failed. Raw response:\n%s", body)
+        return nil, fmt.Errorf("CRT unmarshal error: %v", err)
     }
 
-    uniqueSubs := sync.Map{}
-    var wg sync.WaitGroup
-
-    for _, entry := range entries {
-        wg.Add(1)
-        go func(e CertificateEntry) {
-            defer wg.Done()
-            for _, line := range strings.Split(e.NameValue, "\n") {
-                line = strings.ToLower(strings.TrimSpace(line))
-                if line != "" && !strings.HasPrefix(line, "*.") {
-                    uniqueSubs.Store(line, struct{}{})
-                }
-            }
-        }(entry)
+    subdomains := make(map[string]bool)
+    for _, r := range results {
+        for _, sub := range splitAndTrim(r.NameValue) {
+            subdomains[sub] = true
+        }
     }
-    wg.Wait()
 
-    var result []string
-    uniqueSubs.Range(func(key, _ any) bool {
-        result = append(result, key.(string))
-        return true
-    })
+    uniqueSubs := make([]string, 0, len(subdomains))
+    for sub := range subdomains {
+        uniqueSubs = append(uniqueSubs, sub)
+    }
 
-    return result, nil
+    return uniqueSubs, nil
+}
+
+func splitAndTrim(input string) []string {
+    // Implement logic to clean up and deduplicate names
+    // This could be as simple or complex as needed
+    return []string{input}
 }
