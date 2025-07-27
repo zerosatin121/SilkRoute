@@ -31,6 +31,8 @@ SilkRoute/
     ├── crt.go
     ├── commoncrawl.go
     └── aggregator.go
+    └── wayback.go
+
 ```
 
 ---
@@ -54,7 +56,11 @@ go run main.go <domain>
 ### Example:
 
 ```bash
+<<<<<<< HEAD
 go run main.go exampl.com
+=======
+go run main.go example.com
+>>>>>>> recon-speedup
 ```
 
 ---
