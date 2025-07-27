@@ -1,89 +1,81 @@
 package models
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"sync"
+    "encoding/json"
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "strings"
+    "time"
 )
 
-type CertificateEntry struct {
-	NameValue string `json:"name_value"`
+type CRTResult struct {
+    NameValue string `json:"name_value"`
 }
 
-func GetCRTSubdomains(domain string)([]string, error){
-	url := fmt.Sprintf("https://crt.sh/json?q=%s",domain)
+func GetCRTSubdomains(domain string) ([]string, error) {
+    client := &http.Client{
+        Timeout: 60 * time.Second,
+    }
 
-	client := &http.Client{}
+    url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("CRT request error: %v", err)
+    }
 
-	resp, err := client.Get(url)
-	if err !=nil{
-		return nil,fmt.Errorf("http error: %w" , err)
-	} 
-	// close response body to avoid leakage.....
-	defer resp.Body.Close()
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("CRT response error: %v", err)
+    }
+    defer resp.Body.Close()
 
-	body , err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil ,fmt.Errorf("read  error :%w" , err)
-	}
+    if !strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
+        body, _ := io.ReadAll(resp.Body)
+        log.Printf("CRT non-JSON response:\n%s", body)
+        return nil, fmt.Errorf("Unexpected content type from crt.sh")
+    }
 
-	var entries []CertificateEntry
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("CRT body read error: %v", err)
+    }
 
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return  nil, fmt.Errorf("unmarsha error : %w" ,err)
-	}
+    var results []CRTResult
+    if err := json.Unmarshal(body, &results); err != nil {
+        log.Printf("CRT unmarshal failed:\n%s", body)
+        return nil, fmt.Errorf("CRT unmarshal error: %v", err)
+    }
 
-	// remove duplicates 
-	// uniqueSubs := make(map[string] struct{})
- 
-	// for _,entry := range entries{
-	// 	for _,line := range strings.Split(entry.NameValue, "\n"){
-	// 		 line = strings.TrimSpace(line)
+    seen := make(map[string]struct{})
+    for _, r := range results {
+        subs := splitAndClean(r.NameValue)
+        for _, sub := range subs {
+            seen[sub] = struct{}{}
+        }
+    }
 
-    //         // Only add valid, non-empty lines to the map
-    //         if line != "" {
-    //             uniqueSubs[line] = struct{}{}
-    //         }
+    var unique []string
+    for sub := range seen {
+        unique = append(unique, sub)
+    }
 
-	// 	}
-	
+    return unique, nil
+}
 
-	// }
-
-	// var result []string
-	// for sub := range uniqueSubs{
-	// 	result = append(result,sub)
-
-	// }
-
-	// return result , nil
-
-	uniqueSubs := sync.Map{}
-	var wg  sync.WaitGroup
-
-		for _, entry := range entries{
-			wg.Add(1)
-			go func (entry CertificateEntry){
-				defer wg.Done()
-				 for _, line := range strings.Split(entry.NameValue, "\n") {
-                line = strings.TrimSpace(line)
-                line = strings.ToLower(line) // normalize
-                if line != "" && !strings.HasPrefix(line, "*.") {
-                    uniqueSubs.Store(line, struct{}{})
-                }
-			}
-		}(entry)
-	}
-	wg.Wait()
-	var result []string
-    uniqueSubs.Range(func(key, _ any) bool {
-        result = append(result, key.(string))
-        return true
+func splitAndClean(input string) []string {
+    parts := strings.FieldsFunc(input, func(r rune) bool {
+        return r == '\n' || r == ',' || r == ' '
     })
 
-    return result, nil
-
+    var subs []string
+    for _, part := range parts {
+        sub := strings.ToLower(strings.TrimSpace(part))
+        sub = strings.TrimPrefix(sub, "*.")
+        if sub != "" {
+            subs = append(subs, sub)
+        }
+    }
+    return subs
 }
