@@ -17,6 +17,7 @@ func GetAllSubdomains(domain string) ([]string, error) {
     sources := []func(string) ([]string, error){
         GetCRTSubdomains,
         GetCommonCrawlSubdomains,
+        GetWaybackSubdomains,
     }
 
     for _, fn := range sources {
