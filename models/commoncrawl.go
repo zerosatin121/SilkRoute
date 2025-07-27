@@ -1,57 +1,57 @@
 package models
 
 import (
+    "bufio"
     "encoding/json"
     "fmt"
     "io"
     "net/http"
     "strings"
+    "time"
 )
 
-// Entry represents a single Common Crawl JSON record
-type Entry struct {
+type CrawlEntry struct {
     URL string `json:"url"`
 }
 
-// GetSubdomains queries Common Crawl for domain-related URLs and returns subdomains
 func GetCommonCrawlSubdomains(domain string) ([]string, error) {
-    index := "CC-MAIN-2024-10-index" // You can rotate this manually or make it dynamic
+    index := "CC-MAIN-2024-10-index"
     query := fmt.Sprintf("https://index.commoncrawl.org/%s?url=*.%s&output=json", index, domain)
 
-    resp, err := http.Get(query)
+    client := &http.Client{
+        Timeout: 15 * time.Second,
+    }
+
+    resp, err := client.Get(query)
     if err != nil {
-        return nil, fmt.Errorf("http error: %w", err)
+        return nil, fmt.Errorf("cc http error: %w", err)
     }
     defer resp.Body.Close()
 
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return nil, fmt.Errorf("read error: %w", err)
-    }
-
-    lines := strings.Split(string(body), "\n")
+    reader := bufio.NewReader(resp.Body)
     uniqueSubs := make(map[string]struct{})
 
-    for _, line := range lines {
-        line = strings.TrimSpace(line)
-        if line == "" {
+    for {
+        line, err := reader.ReadBytes('\n')
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, fmt.Errorf("cc read line error: %w", err)
+        }
+
+        var entry CrawlEntry
+        if err := json.Unmarshal(line, &entry); err != nil {
             continue
         }
 
-        var entry Entry
-        if err := json.Unmarshal([]byte(line), &entry); err != nil {
-            continue // skip broken lines
-        }
-
         url := entry.URL
-        // Extract hostname only (without scheme and path)
         url = strings.TrimPrefix(url, "http://")
         url = strings.TrimPrefix(url, "https://")
         url = strings.Split(url, "/")[0]
 
-        // Filter wildcards and base domain
         if url != "" && url != domain && !strings.HasPrefix(url, "*.") {
-            uniqueSubs[url] = struct{}{}
+            uniqueSubs[strings.ToLower(url)] = struct{}{}
         }
     }
 
