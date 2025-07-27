@@ -54,7 +54,7 @@ go run main.go <domain>
 ### Example:
 
 ```bash
-go run main.go kabarak.ac.ke
+go run main.go exampl.com
 ```
 
 ---
