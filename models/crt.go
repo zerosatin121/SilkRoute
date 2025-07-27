@@ -6,6 +6,7 @@ import (
     "io"
     "log"
     "net/http"
+    "strings"
     "time"
 )
 
@@ -15,7 +16,7 @@ type CRTResult struct {
 
 func GetCRTSubdomains(domain string) ([]string, error) {
     client := &http.Client{
-        Timeout: 60 * time.Second, // bumped up from 10s for reliability
+        Timeout: 60 * time.Second,
     }
 
     url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
@@ -30,11 +31,10 @@ func GetCRTSubdomains(domain string) ([]string, error) {
     }
     defer resp.Body.Close()
 
-    contentType := resp.Header.Get("Content-Type")
-    if contentType != "application/json" {
+    if !strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
         body, _ := io.ReadAll(resp.Body)
-        log.Printf("CRT response is not JSON (got %s):\n%s", contentType, body)
-        return nil, fmt.Errorf("unexpected content type from crt.sh")
+        log.Printf("CRT non-JSON response:\n%s", body)
+        return nil, fmt.Errorf("Unexpected content type from crt.sh")
     }
 
     body, err := io.ReadAll(resp.Body)
@@ -44,27 +44,38 @@ func GetCRTSubdomains(domain string) ([]string, error) {
 
     var results []CRTResult
     if err := json.Unmarshal(body, &results); err != nil {
-        log.Printf("CRT unmarshal failed. Raw response:\n%s", body)
+        log.Printf("CRT unmarshal failed:\n%s", body)
         return nil, fmt.Errorf("CRT unmarshal error: %v", err)
     }
 
-    subdomains := make(map[string]bool)
+    seen := make(map[string]struct{})
     for _, r := range results {
-        for _, sub := range splitAndTrim(r.NameValue) {
-            subdomains[sub] = true
+        subs := splitAndClean(r.NameValue)
+        for _, sub := range subs {
+            seen[sub] = struct{}{}
         }
     }
 
-    uniqueSubs := make([]string, 0, len(subdomains))
-    for sub := range subdomains {
-        uniqueSubs = append(uniqueSubs, sub)
+    var unique []string
+    for sub := range seen {
+        unique = append(unique, sub)
     }
 
-    return uniqueSubs, nil
+    return unique, nil
 }
 
-func splitAndTrim(input string) []string {
-    // Implement logic to clean up and deduplicate names
-    // This could be as simple or complex as needed
-    return []string{input}
+func splitAndClean(input string) []string {
+    parts := strings.FieldsFunc(input, func(r rune) bool {
+        return r == '\n' || r == ',' || r == ' '
+    })
+
+    var subs []string
+    for _, part := range parts {
+        sub := strings.ToLower(strings.TrimSpace(part))
+        sub = strings.TrimPrefix(sub, "*.")
+        if sub != "" {
+            subs = append(subs, sub)
+        }
+    }
+    return subs
 }

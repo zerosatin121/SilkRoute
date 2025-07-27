@@ -19,17 +19,17 @@ func GetCommonCrawlSubdomains(domain string) ([]string, error) {
     query := fmt.Sprintf("https://index.commoncrawl.org/%s?url=*.%s&output=json", index, domain)
 
     client := &http.Client{
-        Timeout: 15 * time.Second,
+        Timeout: 30 * time.Second,
     }
 
     resp, err := client.Get(query)
     if err != nil {
-        return nil, fmt.Errorf("cc http error: %w", err)
+        return nil, fmt.Errorf("CommonCrawl HTTP error: %w", err)
     }
     defer resp.Body.Close()
 
     reader := bufio.NewReader(resp.Body)
-    uniqueSubs := make(map[string]struct{})
+    seen := make(map[string]struct{})
 
     for {
         line, err := reader.ReadBytes('\n')
@@ -37,7 +37,7 @@ func GetCommonCrawlSubdomains(domain string) ([]string, error) {
             break
         }
         if err != nil {
-            return nil, fmt.Errorf("cc read line error: %w", err)
+            return nil, fmt.Errorf("CommonCrawl read error: %w", err)
         }
 
         var entry CrawlEntry
@@ -48,15 +48,16 @@ func GetCommonCrawlSubdomains(domain string) ([]string, error) {
         url := entry.URL
         url = strings.TrimPrefix(url, "http://")
         url = strings.TrimPrefix(url, "https://")
-        url = strings.Split(url, "/")[0]
+        host := strings.Split(url, "/")[0]
+        host = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(host, "*.")))
 
-        if url != "" && url != domain && !strings.HasPrefix(url, "*.") {
-            uniqueSubs[strings.ToLower(url)] = struct{}{}
+        if host != "" && host != domain {
+            seen[host] = struct{}{}
         }
     }
 
     var results []string
-    for sub := range uniqueSubs {
+    for sub := range seen {
         results = append(results, sub)
     }
 

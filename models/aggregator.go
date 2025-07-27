@@ -6,7 +6,8 @@ import (
     "sync"
 )
 
-// GetAllSubdomains merges results from CRT.sh and CommonCrawl concurrently
+// GetAllSubdomains queries both CRT.sh and CommonCrawl concurrently,
+// normalizes and deduplicates results.
 func GetAllSubdomains(domain string) ([]string, error) {
     var combined = sync.Map{}
     var wg sync.WaitGroup
@@ -22,7 +23,6 @@ func GetAllSubdomains(domain string) ([]string, error) {
         wg.Add(1)
         go func(f func(string) ([]string, error)) {
             defer wg.Done()
-
             subs, err := f(domain)
             if err != nil {
                 mu.Lock()
@@ -32,7 +32,7 @@ func GetAllSubdomains(domain string) ([]string, error) {
             }
 
             for _, sub := range subs {
-                sub = strings.ToLower(strings.TrimSpace(sub))
+                sub = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(sub, "*.")))
                 if sub != "" {
                     combined.Store(sub, struct{}{})
                 }
