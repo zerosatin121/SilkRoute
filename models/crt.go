@@ -18,7 +18,7 @@ func GetCRTSubdomains(domain string) ([]string, error) {
     url := fmt.Sprintf("https://crt.sh/json?q=%s", domain)
 
     client := &http.Client{
-        Timeout: 10 * time.Second,
+        Timeout: 30 * time.Second,
     }
 
     resp, err := client.Get(url)
