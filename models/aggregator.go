@@ -1,11 +1,12 @@
 package models
 
 import (
+    "fmt"
     "strings"
     "sync"
 )
 
-// GetAllSubdomains merges results from crt.sh and CommonCrawl concurrently
+// GetAllSubdomains merges results from CRT.sh and CommonCrawl concurrently
 func GetAllSubdomains(domain string) ([]string, error) {
     var combined = sync.Map{}
     var wg sync.WaitGroup
