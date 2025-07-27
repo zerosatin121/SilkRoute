@@ -15,16 +15,14 @@ func main() {
 
     domain := os.Args[1]
 
-    // 🔎 Fetch from crt.sh
-  subs, err := models.GetAllSubdomains(domain)
-if err != nil {
-    fmt.Printf("❌ Error: %v\n", err)
-    return
+    subs, err := models.GetAllSubdomains(domain)
+    if err != nil {
+        fmt.Printf("⚠️ Error(s): %v\n", err)
+    }
+
+    fmt.Printf("✅ Found %d unique subdomains:\n", len(subs))
+    for _, sub := range subs {
+        fmt.Println("-", sub)
+    }
 }
 
-fmt.Printf("✅ Found %d unique subdomains:\n", len(subs))
-for _, sub := range subs {
-    fmt.Println("-", sub)
-}
-
-}
