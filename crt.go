@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type CertificateEntry struct {
@@ -36,28 +37,53 @@ func GetSubdomains(domain string)([]string, error){
 	}
 
 	// remove duplicates 
-	uniqueSubs := make(map[string] struct{})
+	// uniqueSubs := make(map[string] struct{})
  
-	for _,entry := range entries{
-		for _,line := range strings.Split(entry.NameValue, "\n"){
-			 line = strings.TrimSpace(line)
+	// for _,entry := range entries{
+	// 	for _,line := range strings.Split(entry.NameValue, "\n"){
+	// 		 line = strings.TrimSpace(line)
 
-            // Only add valid, non-empty lines to the map
-            if line != "" {
-                uniqueSubs[line] = struct{}{}
-            }
+    //         // Only add valid, non-empty lines to the map
+    //         if line != "" {
+    //             uniqueSubs[line] = struct{}{}
+    //         }
 
-		}
+	// 	}
 	
 
-	}
+	// }
 
+	// var result []string
+	// for sub := range uniqueSubs{
+	// 	result = append(result,sub)
+
+	// }
+
+	// return result , nil
+
+	uniqueSubs := sync.Map{}
+	var wg  sync.WaitGroup
+
+		for _, entry := range entries{
+			wg.Add(1)
+			go func (entry CertificateEntry){
+				defer wg.Done()
+				 for _, line := range strings.Split(entry.NameValue, "\n") {
+                line = strings.TrimSpace(line)
+                line = strings.ToLower(line) // normalize
+                if line != "" && !strings.HasPrefix(line, "*.") {
+                    uniqueSubs.Store(line, struct{}{})
+                }
+			}
+		}(entry)
+	}
+	wg.Wait()
 	var result []string
-	for sub := range uniqueSubs{
-		result = append(result,sub)
+    uniqueSubs.Range(func(key, _ any) bool {
+        result = append(result, key.(string))
+        return true
+    })
 
-	}
-
-	return result , nil
+    return result, nil
 
 }
